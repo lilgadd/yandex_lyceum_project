@@ -2,10 +2,10 @@ package models
 
 var(
 	//Время указано в миллисекундах
-	tadd = 5
-	tsub = 5 
-	tmul = 10
-	tdiv = 10
+	Tadd = 5
+	Tsub = 5 
+	Tmul = 10
+	Tdiv = 10
 )
 
 type ExpressionInput struct {
@@ -22,12 +22,26 @@ type Responce1 struct{
 	Id string	`json:"id"`
 }
 
-type Task struct{
-	Id string 					`json:"id"`
-    Arg1 float64				`json:"arg1"`
-    Arg2 float64				`json:"arg2"`
-    Operation string			`json:"operation"`
-    Operation_time_ms float64	`json:"operation_time"`
+type ASTNode struct {
+	Value         float64
+	Operator      string
+	IsLeaf        bool
+	Left, Right   *ASTNode
+	TaskID        string
+	TaskScheduled bool
+}
+
+type Task struct {
+	Id                string	`json:"id"`
+	Arg1              float64 	`json:"arg1"`
+	Arg2              float64  	`json:"arg2"`
+	Operation         string   	`json:"operation"`
+	Result float64				`json:"result"`
+	Operation_time_ms float64	`json:"operation_time"`
+	Dependencies      []string	`json:"dependence"`
+	Status bool					`json:"status"`
+	ExpressionID    string   	`json:"expression_id"`
+	IsFinal bool 				`json:"is_final"`
 }
 
 type Responce2 struct{
