@@ -22,7 +22,7 @@ func GetTaskHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Проверяем, что в очереди есть задачи
 	if len(TaskQueue) == 0 {
-		http.Error(w, "Нет доступных задач", http.StatusNotFound)
+		http.Error(w, "нет доступных задач", http.StatusNotFound)
 		return
 	}
 
@@ -34,7 +34,7 @@ func GetTaskHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	if err := json.NewEncoder(w).Encode(task); err != nil {
-		http.Error(w, fmt.Sprintf("Ошибка при отправке задачи: %v", err), http.StatusInternalServerError)
+		http.Error(w, fmt.Sprintf("ошибка при отправке задачи: %v", err), http.StatusInternalServerError)
 	}
 
 	log.Printf("Задача с ID %s была отправлена агенту", task.Id)
@@ -46,19 +46,19 @@ func PostTaskResultHandler(w http.ResponseWriter, r *http.Request, db *sql.DB) {
 
 	var taskResult models.Responce2
 	if err := json.NewDecoder(r.Body).Decode(&taskResult); err != nil {
-		http.Error(w, "Невалидные данные", http.StatusUnprocessableEntity)
+		http.Error(w, "невалидные данные", http.StatusUnprocessableEntity)
 		return
 	}
 
 	// Обновляем в БД
 	err := UpdateExpressionResultAndStatus(db, taskResult.Id, taskResult.Result, "завершено")
 	if err != nil {
-		http.Error(w, fmt.Sprintf("Не удалось обновить результат: %v", err), http.StatusInternalServerError)
+		http.Error(w, fmt.Sprintf("что-то пошло не так"), http.StatusInternalServerError)
 		return
 	}
 
 	w.WriteHeader(http.StatusOK)
-	w.Write([]byte("Результат успешно записан"))
+	w.Write([]byte("результат успешно записан"))
 }
 
 func UpdateExpressionResultAndStatus(db *sql.DB, id string, result float64, status string) error {
@@ -68,7 +68,7 @@ func UpdateExpressionResultAndStatus(db *sql.DB, id string, result float64, stat
 	}
 
 	rowsAffected, _ := res.RowsAffected()
-	log.Printf("Обновлено строк: %d", rowsAffected)
+	log.Printf("обновлено строк: %d", rowsAffected)
 	return nil
 }
 
@@ -80,7 +80,7 @@ func GetExpressionsHandler(w http.ResponseWriter, r *http.Request, db *sql.DB) {
 	// 1. Извлекаем токен
 	authHeader := r.Header.Get("Authorization")
 	if authHeader == "" {
-		http.Error(w, "Отсутствует заголовок авторизации", http.StatusUnauthorized)
+		http.Error(w, "невалидные данные", http.StatusInternalServerError)
 		return
 	}
 
@@ -90,14 +90,14 @@ func GetExpressionsHandler(w http.ResponseWriter, r *http.Request, db *sql.DB) {
 		return []byte(database.JwtSecret), nil // замени на свой секрет
 	})
 	if err != nil {
-		http.Error(w, "Недействительный токен", http.StatusUnauthorized)
+		http.Error(w, "невалидные данные", http.StatusInternalServerError)
 		return
 	}
 
 	// 2. Достаём user_id из токена
 	userID, ok := claims["user_id"].(string)
 	if !ok {
-		http.Error(w, "Невалидный user_id в токене", http.StatusBadRequest)
+		http.Error(w, "невалидные данные", http.StatusInternalServerError)
 		return
 	}
 
@@ -109,7 +109,7 @@ func GetExpressionsHandler(w http.ResponseWriter, r *http.Request, db *sql.DB) {
 	// 4. Выполняем запрос с фильтрацией по user_id
 	rows, err := db.Query(`SELECT id, status, result FROM expressions WHERE user_id = ?`, userID)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("Ошибка при получении данных: %v", err), http.StatusInternalServerError)
+		http.Error(w, fmt.Sprintf("ошибка при получении данных: %v", err), http.StatusInternalServerError)
 		return
 	}
 	defer rows.Close()
@@ -119,7 +119,7 @@ func GetExpressionsHandler(w http.ResponseWriter, r *http.Request, db *sql.DB) {
 		var result sql.NullFloat64
 
 		if err := rows.Scan(&expr.Id, &expr.Status, &result); err != nil {
-			http.Error(w, fmt.Sprintf("Ошибка при сканировании данных: %v", err), http.StatusInternalServerError)
+			http.Error(w, fmt.Sprintf("ошибка при сканировании данных: %v", err), http.StatusInternalServerError)
 			return
 		}
 
@@ -132,7 +132,7 @@ func GetExpressionsHandler(w http.ResponseWriter, r *http.Request, db *sql.DB) {
 	}
 
 	if err := json.NewEncoder(w).Encode(response); err != nil {
-		http.Error(w, "Ошибка при отправке данных", http.StatusInternalServerError)
+		http.Error(w, "ошибка при отправке данных", http.StatusInternalServerError)
 	}
 }
 
@@ -146,7 +146,7 @@ func GetExpressionByID(w http.ResponseWriter, r *http.Request, db *sql.DB) {
 	// Проверка токена
 	authHeader := r.Header.Get("Authorization")
 	if authHeader == "" || !strings.HasPrefix(authHeader, "Bearer ") {
-		http.Error(w, "Отсутствует токен авторизации", http.StatusUnauthorized)
+		http.Error(w, "невалидные данные", http.StatusInternalServerError)
 		return
 	}
 	tokenStr := strings.TrimPrefix(authHeader, "Bearer ")
@@ -156,24 +156,24 @@ func GetExpressionByID(w http.ResponseWriter, r *http.Request, db *sql.DB) {
 		return database.JwtSecret, nil
 	})
 	if err != nil || !token.Valid {
-		http.Error(w, "Недействительный токен", http.StatusUnauthorized)
+		http.Error(w, "невалидные данные", http.StatusInternalServerError)
 		return
 	}
 
 	userID, ok := claims["user_id"].(string)
 	if !ok {
-		http.Error(w, "user_id отсутствует или некорректен в токене", http.StatusUnauthorized)
+		http.Error(w, "невалидные данные", http.StatusInternalServerError)
 		return
 	}
 
 	// Получаем выражение из БД
 	expr, err := database.GetExpressionByID(db, id, userID)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("Ошибка при получении выражения: %v", err), http.StatusInternalServerError)
+		http.Error(w, fmt.Sprintf("невалидные данные"), http.StatusInternalServerError)
 		return
 	}
 	if expr == nil {
-		http.Error(w, "Выражение не найдено", http.StatusNotFound)
+		http.Error(w, "выражение не найдено", http.StatusNotFound)
 		return
 	}
 
@@ -188,14 +188,20 @@ type RegisterRequest struct {
 	Password string `json:"password"`
 }
 
+// Структура для запроса логина
+type LoginRequest struct {
+	Login    string `json:"login"`
+	Password string `json:"password"`
+}
+
 // Функция для генерации JWT токена
 func GenerateJWT(userID string) (string, error) {
 	claims := jwt.MapClaims{
-		"user_id": userID, // теперь как строка!
+		"user_id": userID, 
 		"exp":     time.Now().Add(24 * time.Hour).Unix(),
 	}
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	return token.SignedString(database.JwtSecret) // JwtSecret у тебя где-то уже есть
+	return token.SignedString(database.JwtSecret)
 }
 
 
@@ -203,7 +209,12 @@ func GenerateJWT(userID string) (string, error) {
 func RegisterHandler(w http.ResponseWriter, r *http.Request, db *sql.DB) {
 	var req RegisterRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "Неверный формат данных", http.StatusBadRequest)
+		http.Error(w, "неверный формат данных", http.StatusBadRequest)
+		return
+	}
+
+	if strings.TrimSpace(req.Login) == "" || strings.TrimSpace(req.Password) == "" {
+		http.Error(w, "невалидные данные", http.StatusBadRequest)
 		return
 	}
 
@@ -213,50 +224,45 @@ func RegisterHandler(w http.ResponseWriter, r *http.Request, db *sql.DB) {
 		return
 	}
 
-	// Только статус 200
 	w.WriteHeader(http.StatusOK)
 }
 
-
-// Структура для запроса логина
-type LoginRequest struct {
-	Login    string `json:"login"`
-	Password string `json:"password"`
-}
-
-// Обработчик входа пользователя
 func LoginHandler(w http.ResponseWriter, r *http.Request, db *sql.DB) {
 	var req LoginRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "Неверный формат данных", http.StatusBadRequest)
+		http.Error(w, "невалидные данные", http.StatusBadRequest)
+		return
+	}
+
+	if strings.TrimSpace(req.Login) == "" || strings.TrimSpace(req.Password) == "" {
+		http.Error(w, "невалидные данные", http.StatusBadRequest)
 		return
 	}
 
 	var userID, hashedPassword string
 	err := db.QueryRow("SELECT id, password FROM users WHERE login = ?", req.Login).Scan(&userID, &hashedPassword)
 	if err == sql.ErrNoRows || bcrypt.CompareHashAndPassword([]byte(hashedPassword), []byte(req.Password)) != nil {
-		http.Error(w, "Неверный логин или пароль", http.StatusUnauthorized)
+		http.Error(w, "налидные данные", http.StatusUnauthorized)
 		return
 	} else if err != nil {
-		http.Error(w, "Ошибка сервера", http.StatusInternalServerError)
+		http.Error(w, "ошибка сервера", http.StatusInternalServerError)
 		return
 	}
 
-	// Генерация JWT токена
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
 		"user_id": userID,
 		"exp":     time.Now().Add(24 * time.Hour).Unix(),
 	})
 	tokenStr, err := token.SignedString(database.JwtSecret)
 	if err != nil {
-		http.Error(w, "Ошибка генерации токена", http.StatusInternalServerError)
+		http.Error(w, "ошибка генерации токена", http.StatusInternalServerError)
 		return
 	}
 
-	// Отправка токена
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(map[string]string{
 		"token": tokenStr,
 	})
 }
+

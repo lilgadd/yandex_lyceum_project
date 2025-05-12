@@ -54,7 +54,7 @@ type Responce2 struct{
 }
 
 type User struct {
-	ID       int64  `json:"id"`       // Идентификатор пользователя
-	Login    string `json:"login"`    // Логин пользователя
-	Password string `json:"password"` // Хэшированный пароль
+	ID       int64  `json:"id"`       
+	Login    string `json:"login"`    
+	Password string `json:"password"` 
 }

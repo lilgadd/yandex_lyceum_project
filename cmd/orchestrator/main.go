@@ -17,7 +17,7 @@ func main() {
 	// Инициализация базы данных
 	userDB, expressionDB, err := database.InitDB()
 	if err != nil {
-		log.Fatal("Ошибка при инициализации баз данных:", err)
+		log.Fatal("ошибка при инициализации баз данных:", err)
 	}
 	defer userDB.Close()
 	defer expressionDB.Close()
@@ -39,7 +39,7 @@ func main() {
     if r.Method == http.MethodGet {
         orchestrator.GetExpressionsHandler(w, r, expressionDB)
     } else {
-        http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+        http.Error(w, "метод недоступен", http.StatusMethodNotAllowed)
     }
 	})
 

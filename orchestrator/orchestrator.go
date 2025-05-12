@@ -50,14 +50,14 @@ func CalculateHandler(w http.ResponseWriter, r *http.Request, dbConn *sql.DB) {
 
 	// Проверяем корректность выражения
 	if !isValidExpression(input.Expression) {
-		http.Error(w, "некорректные данные", http.StatusUnprocessableEntity)
+		http.Error(w, "невалидные данные", http.StatusUnprocessableEntity)
 		return
 	}
 
 	// Достаём user_id из токена
 	authHeader := r.Header.Get("Authorization")
 	if authHeader == "" || !strings.HasPrefix(authHeader, "Bearer ") {
-		http.Error(w, "Отсутствует токен авторизации", http.StatusUnauthorized)
+		http.Error(w, "отсутствует токен авторизации", http.StatusUnprocessableEntity)
 		return
 	}
 	tokenStr := strings.TrimPrefix(authHeader, "Bearer ")
@@ -67,13 +67,13 @@ func CalculateHandler(w http.ResponseWriter, r *http.Request, dbConn *sql.DB) {
 		return database.JwtSecret, nil
 	})
 	if err != nil || !token.Valid {
-		http.Error(w, "Недействительный токен", http.StatusUnauthorized)
+		http.Error(w, "невалидные данные", http.StatusUnprocessableEntity)
 		return
 	}
 
 	userID, ok := claims["user_id"].(string)
 	if !ok {
-		http.Error(w, "user_id отсутствует или некорректен в токене", http.StatusUnauthorized)
+		http.Error(w, "невалидные данные", http.StatusUnprocessableEntity)
 		return
 	}
 
@@ -83,16 +83,16 @@ func CalculateHandler(w http.ResponseWriter, r *http.Request, dbConn *sql.DB) {
 	// Добавляем в БД
 	err = database.SaveExpressionForUser(dbConn, userID, id, cleaned)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("Ошибка сохранения выражения: %v", err), http.StatusInternalServerError)
+		http.Error(w, fmt.Sprintf("ошибка сохранения выражения: %v", err), http.StatusInternalServerError)
 		return
 	}
 
 	// Отправляем ответ с ID
 	resp := models.Responce1{Id: id}
 	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
+	w.WriteHeader(http.StatusCreated)
 	if err := json.NewEncoder(w).Encode(resp); err != nil {
-		http.Error(w, fmt.Sprintf("Ошибка при отправке ответа: %v", err), http.StatusInternalServerError)
+		http.Error(w, fmt.Sprintf("ошибка при отправке ответа: %v", err), http.StatusInternalServerError)
 		return
 	}
 
@@ -298,7 +298,7 @@ func createExpressionTree(rpn []string) *models.ASTNode {
 		switch token {
 		case "+", "-", "*", "/":
 			if len(stack) < 2 {
-				panic("invalid expression: not enough operands")
+				panic("некорректное выражение")
 			}
 
 			right := stack[len(stack)-1]
@@ -318,7 +318,7 @@ func createExpressionTree(rpn []string) *models.ASTNode {
 
 		case "u-":
 			if len(stack) < 1 {
-				panic("invalid expression: not enough operands for unary minus")
+				panic("некорректное выражение")
 			}
 
 			operand := stack[len(stack)-1]
@@ -337,7 +337,7 @@ func createExpressionTree(rpn []string) *models.ASTNode {
 			var value float64
 			_, err := fmt.Sscanf(token, "%f", &value)
 			if err != nil {
-				panic(fmt.Sprintf("invalid number token: %s", token))
+				panic(fmt.Sprintf("ошибка с: %s", token))
 			}
 			node := &models.ASTNode{
 				Value:  value,
@@ -348,7 +348,7 @@ func createExpressionTree(rpn []string) *models.ASTNode {
 	}
 
 	if len(stack) != 1 {
-		panic("invalid RPN expression: remaining elements in stack")
+		panic("что-то пошло не так")
 	}
 
 	return stack[0]

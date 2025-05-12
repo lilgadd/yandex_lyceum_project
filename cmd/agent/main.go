@@ -29,7 +29,7 @@ func getTaskResult(taskId string) (float64, error) {
 
 	// Ждем, пока задача не будет выполнена
 	for !task.Status {
-		log.Printf("Задача %s еще не выполнена. Ожидание...", taskId)
+		log.Printf("задача %s еще не выполнена. Ожидание...", taskId)
 		time.Sleep(1 * time.Second) // Ждем 1 секунду перед повторной проверкой
 		mu.Lock()
 		task, exists = taskMap[taskId] // Повторно получаем задачу из мапы
@@ -59,11 +59,11 @@ func PerformOperation(task *models.Task) float64 {
 		if task.Arg2 != 0 {
 			task.Result = task.Arg1 / task.Arg2
 		} else {
-			log.Println("Ошибка: деление на ноль!")
+			log.Println("деление на ноль")
 			task.Result = 0
 		}
 	default:
-		log.Println("Неизвестная операция!")
+		log.Println("неизвестная операция")
 		task.Result = 0
 	}
 
@@ -86,7 +86,7 @@ func worker(id int, pollInterval time.Duration, wg *sync.WaitGroup) {
 	for {
 		resp, err := client.Get(orchestratorURL)
 		if err != nil {
-			log.Printf("[Worker %d] Ошибка при получении задачи: %v", id, err)
+			log.Printf("[Worker %d] ошибка при получении задачи: %v", id, err)
 			time.Sleep(pollInterval)
 			continue
 		}
@@ -98,7 +98,7 @@ func worker(id int, pollInterval time.Duration, wg *sync.WaitGroup) {
 
 		var task models.Task
 		if err := json.NewDecoder(resp.Body).Decode(&task); err != nil {
-			log.Printf("[Worker %d] Ошибка при декодировании задачи: %v", id, err)
+			log.Printf("[Worker %d] ошибка при декодировании задачи: %v", id, err)
 			resp.Body.Close()
 			time.Sleep(pollInterval)
 			continue
@@ -116,7 +116,7 @@ func worker(id int, pollInterval time.Duration, wg *sync.WaitGroup) {
 			for {
 				result, err := getTaskResult(depId)
 				if err != nil {
-					log.Printf("[Worker %d] Ошибка при получении результата зависимости %s: %v", id, depId, err)
+					log.Printf("[Worker %d] ошибка при получении результата зависимости %s: %v", id, depId, err)
 					time.Sleep(pollInterval) // Ждём, если зависимость ещё не выполнена
 					continue
 				}
@@ -150,7 +150,7 @@ func worker(id int, pollInterval time.Duration, wg *sync.WaitGroup) {
 
 			res, err := client.Post(orchestratorURL, "application/json", bytes.NewReader(data))
 			if err != nil {
-				log.Printf("[Worker %d] Ошибка при отправке финального результата: %v", id, err)
+				log.Printf("[Worker %d] ошибка при отправке финального результата: %v", id, err)
 				continue
 			}
 			res.Body.Close()
@@ -164,7 +164,7 @@ func worker(id int, pollInterval time.Duration, wg *sync.WaitGroup) {
 
 
 func main() {
-	// Задать переменную окружения внутри программы (для локальной разработки или тестирования)
+	// Задать переменную окружения внутри программы
 	os.Setenv("COMPUTING_POWER", "2") // Тут можно поставить любое значение
 
 	computingPower := 1
