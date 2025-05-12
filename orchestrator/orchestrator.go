@@ -107,7 +107,7 @@ func CalculateHandler(w http.ResponseWriter, r *http.Request, dbConn *sql.DB) {
 func ProcessExpression(db *sql.DB, id string, input string) {
 	// Обновляем статус в БД
 	if err := UpdateExpressionStatus(db, id, "выполняется"); err != nil {
-		log.Printf("Ошибка обновления статуса выражения: %v", err)
+		// log.Printf("Ошибка обновления статуса выражения: %v", err)
 	}
 
 	rpn := convertToRPN(input)

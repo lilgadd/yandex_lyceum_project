@@ -37,12 +37,12 @@ func GetTaskHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, fmt.Sprintf("ошибка при отправке задачи: %v", err), http.StatusInternalServerError)
 	}
 
-	log.Printf("Задача с ID %s была отправлена агенту", task.Id)
+	// log.Printf("Задача с ID %s была отправлена агенту", task.Id)
 }
 
 
 func PostTaskResultHandler(w http.ResponseWriter, r *http.Request, db *sql.DB) {
-	log.Println("Получен POST запрос для записи результата")
+	// log.Println("Получен POST запрос для записи результата")
 
 	var taskResult models.Responce2
 	if err := json.NewDecoder(r.Body).Decode(&taskResult); err != nil {

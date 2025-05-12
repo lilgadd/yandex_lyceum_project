@@ -29,7 +29,7 @@ func getTaskResult(taskId string) (float64, error) {
 
 	// Ждем, пока задача не будет выполнена
 	for !task.Status {
-		log.Printf("задача %s еще не выполнена. Ожидание...", taskId)
+		// log.Printf("задача %s еще не выполнена. Ожидание...", taskId)
 		time.Sleep(1 * time.Second) // Ждем 1 секунду перед повторной проверкой
 		mu.Lock()
 		task, exists = taskMap[taskId] // Повторно получаем задачу из мапы
@@ -59,18 +59,18 @@ func PerformOperation(task *models.Task) float64 {
 		if task.Arg2 != 0 {
 			task.Result = task.Arg1 / task.Arg2
 		} else {
-			log.Println("деление на ноль")
+			// log.Println("деление на ноль")
 			task.Result = 0
 		}
 	default:
-		log.Println("неизвестная операция")
+		// log.Println("неизвестная операция")
 		task.Result = 0
 	}
 
 	// Обновляем статус задачи на выполненную
 	task.Status = true
 	taskMap[task.Id] = *task // Обновляем задачу в мапе
-	log.Printf("Задача %s выполнена. Результат: %f", task.Id, task.Result)
+	// log.Printf("Задача %s выполнена. Результат: %f", task.Id, task.Result)
 
 	return task.Result
 }
@@ -86,7 +86,7 @@ func worker(id int, pollInterval time.Duration, wg *sync.WaitGroup) {
 	for {
 		resp, err := client.Get(orchestratorURL)
 		if err != nil {
-			log.Printf("[Worker %d] ошибка при получении задачи: %v", id, err)
+			// log.Printf("[Worker %d] ошибка при получении задачи: %v", id, err)
 			time.Sleep(pollInterval)
 			continue
 		}
@@ -98,7 +98,7 @@ func worker(id int, pollInterval time.Duration, wg *sync.WaitGroup) {
 
 		var task models.Task
 		if err := json.NewDecoder(resp.Body).Decode(&task); err != nil {
-			log.Printf("[Worker %d] ошибка при декодировании задачи: %v", id, err)
+			// log.Printf("[Worker %d] ошибка при декодировании задачи: %v", id, err)
 			resp.Body.Close()
 			time.Sleep(pollInterval)
 			continue
@@ -116,11 +116,11 @@ func worker(id int, pollInterval time.Duration, wg *sync.WaitGroup) {
 			for {
 				result, err := getTaskResult(depId)
 				if err != nil {
-					log.Printf("[Worker %d] ошибка при получении результата зависимости %s: %v", id, depId, err)
+					// log.Printf("[Worker %d] ошибка при получении результата зависимости %s: %v", id, depId, err)
 					time.Sleep(pollInterval) // Ждём, если зависимость ещё не выполнена
 					continue
 				}
-				log.Printf("[Worker %d] Зависимость %s выполнена с результатом %f", id, depId, result)
+				// log.Printf("[Worker %d] Зависимость %s выполнена с результатом %f", id, depId, result)
 
 				// Устанавливаем аргумент из зависимости
 				if task.Arg1 == 0 {
@@ -134,11 +134,11 @@ func worker(id int, pollInterval time.Duration, wg *sync.WaitGroup) {
 			}
 		}
 
-		log.Printf("[Worker %d] Выполнение задачи %s", id, task.Id)
+		// log.Printf("[Worker %d] Выполнение задачи %s", id, task.Id)
 		// Выполняем операцию
 		result := PerformOperation(&task)
 
-		log.Printf("[Worker %d] Результат задачи %s: %f", id, task.Id, result)
+		// log.Printf("[Worker %d] Результат задачи %s: %f", id, task.Id, result)
 
 		// Отправляем результат только если задача финальная
 		if task.IsFinal {
@@ -150,14 +150,14 @@ func worker(id int, pollInterval time.Duration, wg *sync.WaitGroup) {
 
 			res, err := client.Post(orchestratorURL, "application/json", bytes.NewReader(data))
 			if err != nil {
-				log.Printf("[Worker %d] ошибка при отправке финального результата: %v", id, err)
+				// log.Printf("[Worker %d] ошибка при отправке финального результата: %v", id, err)
 				continue
 			}
 			res.Body.Close()
-			log.Printf("[Worker %d] Финальный результат задачи %s отправлен", id, task.Id)
+			// log.Printf("[Worker %d] Финальный результат задачи %s отправлен", id, task.Id)
 
 			// Вывод финального результата в консоль
-			fmt.Printf("ФИНАЛЬНЫЙ РЕЗУЛЬТАТ (%s): %.2f\n", task.ExpressionID, result)
+			// fmt.Printf("ФИНАЛЬНЫЙ РЕЗУЛЬТАТ (%s): %.2f\n", task.ExpressionID, result)
 		}
 	}
 }
