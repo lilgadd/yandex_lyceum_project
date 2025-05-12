@@ -10,6 +10,11 @@ import (
 	"unicode"
 	"regexp"
 	"fmt"
+	"database/sql"
+	"calc/database"
+	"github.com/golang-jwt/jwt/v5"
+	"log"
+	"strconv"
 )
 
 var(
@@ -26,7 +31,8 @@ var(
 
 )
 
-func CalculateHandler(w http.ResponseWriter, r *http.Request) {
+// Хендлер для вычислений
+func CalculateHandler(w http.ResponseWriter, r *http.Request, dbConn *sql.DB) {
 	var input models.ExpressionInput
 
 	// Декодируем JSON
@@ -48,55 +54,74 @@ func CalculateHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Генерим ID
-	id := uuid.New().String()
+	// Достаём user_id из токена
+	authHeader := r.Header.Get("Authorization")
+	if authHeader == "" || !strings.HasPrefix(authHeader, "Bearer ") {
+		http.Error(w, "Отсутствует токен авторизации", http.StatusUnauthorized)
+		return
+	}
+	tokenStr := strings.TrimPrefix(authHeader, "Bearer ")
 
-	// Блокировка при работе с мапой
-	mutex.Lock()
-	defer mutex.Unlock()
-
-	expr := &models.Expression{
-		Id:     id,
-		Status: "ожидает выполнения",
-		Result: 0,
+	claims := jwt.MapClaims{}
+	token, err := jwt.ParseWithClaims(tokenStr, claims, func(token *jwt.Token) (interface{}, error) {
+		return database.JwtSecret, nil
+	})
+	if err != nil || !token.Valid {
+		http.Error(w, "Недействительный токен", http.StatusUnauthorized)
+		return
 	}
 
-	// Сохраняем выражение в хранилище
-	Expressions[id] = expr
+	userID, ok := claims["user_id"].(string)
+	if !ok {
+		http.Error(w, "user_id отсутствует или некорректен в токене", http.StatusUnauthorized)
+		return
+	}
+
+	// Генерим ID для выражения
+	id := uuid.New().String()
+
+	// Добавляем в БД
+	err = database.SaveExpressionForUser(dbConn, userID, id, cleaned)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Ошибка сохранения выражения: %v", err), http.StatusInternalServerError)
+		return
+	}
 
 	// Отправляем ответ с ID
 	resp := models.Responce1{Id: id}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	if err := json.NewEncoder(w).Encode(resp); err != nil {
-    http.Error(w, fmt.Sprintf("Ошибка при отправке ответа: %v", err), http.StatusInternalServerError)
-    return
+		http.Error(w, fmt.Sprintf("Ошибка при отправке ответа: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	// Параллельно обрабатываем выражение
+	go ProcessExpression(dbConn, id, cleaned)
 }
 
 
-	// Отправляем на обработку
-	go ProcessExpression(id, input.Expression)
-}
 
 
-func ProcessExpression(id string, input string) {
-	mutex.Lock()
-	Expressions[id].Status = "выполняется"
-	mutex.Unlock()
+
+func ProcessExpression(db *sql.DB, id string, input string) {
+	// Обновляем статус в БД
+	if err := UpdateExpressionStatus(db, id, "выполняется"); err != nil {
+		log.Printf("Ошибка обновления статуса выражения: %v", err)
+	}
 
 	rpn := convertToRPN(input)
 	tree := createExpressionTree(rpn)
 
-	// Функция вернёт true, когда все задачи будут добавлены в очередь
 	if createTasksForTree(tree, id) {
-	
-		
 	}
-
-
 }
 
 
+func UpdateExpressionStatus(db *sql.DB, id string, status string) error {
+	_, err := db.Exec(`UPDATE expressions SET status = ? WHERE id = ?`, status, id)
+	return err
+}
 
 func isValidExpression(expression string) bool {
 	openBrackets := 0
@@ -183,45 +208,57 @@ func convertToRPN(expression string) []string {
 	var output []string
 	var stack []string
 
-	// Новая регулярка: распознаёт отрицательные числа
-	re := regexp.MustCompile(`(-?\d+\.?\d*|\+|\-|\*|\/|\(|\))`)
+	// Регулярное выражение: числа, операторы, скобки
+	re := regexp.MustCompile(`(\d+\.?\d*|\+|\-|\*|\/|\(|\))`)
 	tokens := re.FindAllString(expression, -1)
 
-	for i, token := range tokens {
+	for i := 0; i < len(tokens); i++ {
+		token := tokens[i]
+
 		switch token {
 		case "+", "-":
-			// Проверка на унарный минус (если токен "-" и перед ним ничего или "(" или оператор)
-			if token == "-" && (i == 0 || tokens[i-1] == "(" || tokens[i-1] == "+" || tokens[i-1] == "-" || tokens[i-1] == "*" || tokens[i-1] == "/") {
-				// Объединяем с числом справа
-				if i+1 < len(tokens) {
+			// Обработка унарного минуса: если "-" в начале или после "(", оператора
+			if token == "-" && (i == 0 || tokens[i-1] == "(" || isOperator(tokens[i-1])) {
+				// Объединяем "-" и следующее число
+				if i+1 < len(tokens) && isNumber(tokens[i+1]) {
 					tokens[i+1] = "-" + tokens[i+1]
-					continue // пропускаем унарный минус, число станет отрицательным
+					continue // пропускаем текущий унарный минус
 				}
 			}
+
+			// Обычные операторы + и -
 			for len(stack) > 0 && precedence(stack[len(stack)-1]) >= precedence(token) {
 				output = append(output, stack[len(stack)-1])
 				stack = stack[:len(stack)-1]
 			}
 			stack = append(stack, token)
+
 		case "*", "/":
 			for len(stack) > 0 && precedence(stack[len(stack)-1]) >= precedence(token) {
 				output = append(output, stack[len(stack)-1])
 				stack = stack[:len(stack)-1]
 			}
 			stack = append(stack, token)
+
 		case "(":
 			stack = append(stack, token)
+
 		case ")":
 			for len(stack) > 0 && stack[len(stack)-1] != "(" {
 				output = append(output, stack[len(stack)-1])
 				stack = stack[:len(stack)-1]
 			}
-			stack = stack[:len(stack)-1] // удаляем "("
+			if len(stack) > 0 && stack[len(stack)-1] == "(" {
+				stack = stack[:len(stack)-1]
+			}
+
 		default:
+			// Число
 			output = append(output, token)
 		}
 	}
 
+	// Оставшиеся операторы в стек
 	for len(stack) > 0 {
 		output = append(output, stack[len(stack)-1])
 		stack = stack[:len(stack)-1]
@@ -230,6 +267,7 @@ func convertToRPN(expression string) []string {
 	return output
 }
 
+// Дополнительные функции
 func precedence(op string) int {
 	switch op {
 	case "+", "-":
@@ -241,26 +279,66 @@ func precedence(op string) int {
 	}
 }
 
+func isOperator(s string) bool {
+	return s == "+" || s == "-" || s == "*" || s == "/"
+}
+
+func isNumber(s string) bool {
+	_, err := strconv.ParseFloat(s, 64)
+	return err == nil
+}
+
+
+
 
 func createExpressionTree(rpn []string) *models.ASTNode {
 	var stack []*models.ASTNode
 
 	for _, token := range rpn {
-		if token == "+" || token == "-" || token == "*" || token == "/" {
+		switch token {
+		case "+", "-", "*", "/":
+			if len(stack) < 2 {
+				panic("invalid expression: not enough operands")
+			}
+
 			right := stack[len(stack)-1]
-			stack = stack[:len(stack)-1]
-			left := stack[len(stack)-1]
-			stack = stack[:len(stack)-1]
+			left := stack[len(stack)-2]
+			stack = stack[:len(stack)-2]
 
 			node := &models.ASTNode{
 				Operator: token,
 				Left:     left,
 				Right:    right,
 			}
+
+			// (необязательная проверка/отладка)
+			_ = getOperatorPriority(token)
+
 			stack = append(stack, node)
-		} else {
+
+		case "u-":
+			if len(stack) < 1 {
+				panic("invalid expression: not enough operands for unary minus")
+			}
+
+			operand := stack[len(stack)-1]
+			stack = stack[:len(stack)-1]
+
+			node := &models.ASTNode{
+				Operator: "u-",
+				Left:     operand,
+			}
+
+			_ = getOperatorPriority("u-")
+
+			stack = append(stack, node)
+
+		default:
 			var value float64
-			fmt.Sscanf(token, "%f", &value)
+			_, err := fmt.Sscanf(token, "%f", &value)
+			if err != nil {
+				panic(fmt.Sprintf("invalid number token: %s", token))
+			}
 			node := &models.ASTNode{
 				Value:  value,
 				IsLeaf: true,
@@ -269,9 +347,31 @@ func createExpressionTree(rpn []string) *models.ASTNode {
 		}
 	}
 
+	if len(stack) != 1 {
+		panic("invalid RPN expression: remaining elements in stack")
+	}
+
 	return stack[0]
 }
 
+
+
+// Функция для получения приоритета операции
+func getOperatorPriority(operator string) int {
+    switch operator {
+    case "u-":
+        return 3 // самый высокий приоритет
+    case "*", "/":
+        return 2
+    case "+", "-":
+        return 1
+    default:
+        return 0
+    }
+}
+
+
+// Функция для рекурсивного обхода дерева и создания задач
 func createTasksForTree(node *models.ASTNode, id string) bool {
 	var finalTaskID string
 
@@ -284,6 +384,7 @@ func createTasksForTree(node *models.ASTNode, id string) bool {
 		traverse(n.Left)
 		traverse(n.Right)
 
+		// === Обработка бинарных операторов ===
 		if n.Left != nil && n.Right != nil {
 			leftReady := n.Left.IsLeaf || n.Left.TaskScheduled
 			rightReady := n.Right.IsLeaf || n.Right.TaskScheduled
@@ -300,7 +401,7 @@ func createTasksForTree(node *models.ASTNode, id string) bool {
 					Operation:         n.Operator,
 					Operation_time_ms: float64(getOperationTime(n.Operator)),
 					ExpressionID:      id,
-					IsFinal:           false, // по умолчанию false
+					IsFinal:           false,
 				}
 
 				if !n.Left.IsLeaf {
@@ -310,6 +411,9 @@ func createTasksForTree(node *models.ASTNode, id string) bool {
 					task.Dependencies = append(task.Dependencies, n.Right.TaskID)
 				}
 
+				priority := getOperatorPriority(n.Operator)
+				log.Printf("Приоритет оператора %s: %d", n.Operator, priority)
+
 				Tasks[taskIDStr] = task
 				TaskQueue = append(TaskQueue, task)
 
@@ -318,7 +422,46 @@ func createTasksForTree(node *models.ASTNode, id string) bool {
 				n.TaskID = taskIDStr
 				n.TaskScheduled = true
 
-				// Сохраняем ID задачи у корня
+				if n == node {
+					finalTaskID = taskIDStr
+				}
+				TaskMutex.Unlock()
+			}
+		}
+
+		// === Обработка унарного минуса ===
+		if n.Operator == "u-" && n.Left != nil && n.Right == nil && !n.TaskScheduled {
+			leftReady := n.Left.IsLeaf || n.Left.TaskScheduled
+
+			if leftReady {
+				TaskMutex.Lock()
+				taskID++
+				taskIDStr := fmt.Sprintf("%d", taskID)
+
+				task := &models.Task{
+					Id:                taskIDStr,
+					Arg1:              n.Left.Value,
+					Operation:         "u-",
+					Operation_time_ms: float64(getOperationTime("u-")),
+					ExpressionID:      id,
+					IsFinal:           false,
+				}
+
+				if !n.Left.IsLeaf {
+					task.Dependencies = append(task.Dependencies, n.Left.TaskID)
+				}
+
+				priority := getOperatorPriority("u-")
+				log.Printf("Приоритет унарного оператора %s: %d", n.Operator, priority)
+
+				Tasks[taskIDStr] = task
+				TaskQueue = append(TaskQueue, task)
+
+				n.Value = 0
+				n.IsLeaf = false
+				n.TaskID = taskIDStr
+				n.TaskScheduled = true
+
 				if n == node {
 					finalTaskID = taskIDStr
 				}
@@ -329,7 +472,6 @@ func createTasksForTree(node *models.ASTNode, id string) bool {
 
 	traverse(node)
 
-	// Устанавливаем флаг IsFinal = true у корневой задачи
 	if finalTaskID != "" {
 		TaskMutex.Lock()
 		if finalTask, ok := Tasks[finalTaskID]; ok {
@@ -340,7 +482,6 @@ func createTasksForTree(node *models.ASTNode, id string) bool {
 
 	return true
 }
-
 
 
 func getOperationTime(operator string) int {

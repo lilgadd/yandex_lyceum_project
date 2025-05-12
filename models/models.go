@@ -1,5 +1,9 @@
 package models
 
+import(
+	// "database/sql"
+)
+
 var(
 	//Время указано в миллисекундах
 	Tadd = 5
@@ -49,3 +53,8 @@ type Responce2 struct{
   	Result float64	`json:"result"`
 }
 
+type User struct {
+	ID       int64  `json:"id"`       // Идентификатор пользователя
+	Login    string `json:"login"`    // Логин пользователя
+	Password string `json:"password"` // Хэшированный пароль
+}

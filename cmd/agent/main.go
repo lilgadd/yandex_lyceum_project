@@ -15,11 +15,14 @@ import (
 )
 
 var taskMap = make(map[string]models.Task) // Мапа для хранения задач, ключ - ID задачи
+var mu sync.Mutex // Мьютекс для синхронизации доступа к taskMap
 
 // Функция для получения результата задачи
 func getTaskResult(taskId string) (float64, error) {
 	// Проверка, существует ли задача в мапе
+	mu.Lock()
 	task, exists := taskMap[taskId]
+	mu.Unlock()
 	if !exists {
 		return 0, fmt.Errorf("задача с ID %s не найдена", taskId)
 	}
@@ -28,7 +31,9 @@ func getTaskResult(taskId string) (float64, error) {
 	for !task.Status {
 		log.Printf("Задача %s еще не выполнена. Ожидание...", taskId)
 		time.Sleep(1 * time.Second) // Ждем 1 секунду перед повторной проверкой
+		mu.Lock()
 		task, exists = taskMap[taskId] // Повторно получаем задачу из мапы
+		mu.Unlock()
 		if !exists {
 			return 0, fmt.Errorf("задача с ID %s не найдена", taskId)
 		}
@@ -40,6 +45,9 @@ func getTaskResult(taskId string) (float64, error) {
 
 // Функция для выполнения операции (например, сложение, вычитание)
 func PerformOperation(task *models.Task) float64 {
+	mu.Lock()
+	defer mu.Unlock()
+
 	switch task.Operation {
 	case "+":
 		task.Result = task.Arg1 + task.Arg2
@@ -66,6 +74,7 @@ func PerformOperation(task *models.Task) float64 {
 
 	return task.Result
 }
+
 
 // Функция для воркера
 func worker(id int, pollInterval time.Duration, wg *sync.WaitGroup) {
@@ -97,7 +106,9 @@ func worker(id int, pollInterval time.Duration, wg *sync.WaitGroup) {
 		resp.Body.Close()
 
 		// Добавляем задачу в мапу (или обновляем её, если она уже есть)
+		mu.Lock()
 		taskMap[task.Id] = task
+		mu.Unlock()
 
 		// Проверяем зависимости и ждём, пока они не будут выполнены
 		for _, depId := range task.Dependencies {
@@ -112,9 +123,9 @@ func worker(id int, pollInterval time.Duration, wg *sync.WaitGroup) {
 				log.Printf("[Worker %d] Зависимость %s выполнена с результатом %f", id, depId, result)
 
 				// Устанавливаем аргумент из зависимости
-				if depId == task.Dependencies[0] { // Если это первая зависимость (которая используется в аргументе)
+				if task.Arg1 == 0 {
 					task.Arg1 = result
-				} else if depId == task.Dependencies[1] { // Если это вторая зависимость
+				} else {
 					task.Arg2 = result
 				}
 
@@ -132,8 +143,8 @@ func worker(id int, pollInterval time.Duration, wg *sync.WaitGroup) {
 		// Отправляем результат только если задача финальная
 		if task.IsFinal {
 			payload := models.Responce2{
-			Id:     task.ExpressionID,
-			Result: result,
+				Id:     task.ExpressionID,
+				Result: result,
 			}
 			data, _ := json.Marshal(payload)
 
@@ -147,13 +158,14 @@ func worker(id int, pollInterval time.Duration, wg *sync.WaitGroup) {
 
 			// Вывод финального результата в консоль
 			fmt.Printf("ФИНАЛЬНЫЙ РЕЗУЛЬТАТ (%s): %.2f\n", task.ExpressionID, result)
-}
+		}
 	}
 }
 
+
 func main() {
 	// Задать переменную окружения внутри программы (для локальной разработки или тестирования)
-	os.Setenv("COMPUTING_POWER", "2")  // Пример, тут можно поставить любое значение
+	os.Setenv("COMPUTING_POWER", "2") // Тут можно поставить любое значение
 
 	computingPower := 1
 	if val := os.Getenv("COMPUTING_POWER"); val != "" {
